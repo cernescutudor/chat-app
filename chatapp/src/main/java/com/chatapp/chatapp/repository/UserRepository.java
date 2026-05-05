@@ -8,6 +8,7 @@ import software.amazon.awssdk.enhanced.dynamodb.Key;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.enhanced.dynamodb.model.ScanEnhancedRequest;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -52,5 +53,13 @@ public class UserRepository {
         } catch (Exception e) {
             // Table already exists, ignore
         }
+    }
+    
+    public List<User> findAll() {
+        return table.scan(ScanEnhancedRequest.builder().build())
+                .items()
+                .stream()
+                .toList();
+
     }
 }
