@@ -176,6 +176,7 @@
         let selectedUserId = null;
         let selectedUsername = null;
         let currentSubscription = null;
+        let usersTopicSubscription = null;
         let lastRenderedSenderId = null;
         const userProfilePictureById = {
             [currentUserId]: currentUserProfilePictureUrl || ''
@@ -183,25 +184,10 @@
 
         document.querySelectorAll('.user-list-item').forEach(item => {
             userProfilePictureById[item.dataset.userid] = item.dataset.profilepictureurl || '';
+            registerUserListItem(item);
         });
 
-        // Connect to WebSocket on page load
-        function connect() {
-            const socket = new SockJS('/ws');
-            stompClient = Stomp.over(socket);
-            stompClient.debug = null; // suppress console spam
-            stompClient.connect({}, () => {
-                console.log('WebSocket connected');
-            });
-        }
-
-        // Build the same conversationId as the backend
-        function buildConversationId(id1, id2) {
-            return id1 < id2 ? id1 + '#' + id2 : id2 + '#' + id1;
-        }
-
-        // When a user is selected from the sidebar
-        document.querySelectorAll('.user-list-item').forEach(item => {
+        function registerUserListItem(item) {
             item.addEventListener('click', () => {
                 document.querySelectorAll('.user-list-item')
                     .forEach(i => i.classList.remove('active'));
@@ -232,7 +218,52 @@
                 // Load existing messages via REST
                 loadHistory(selectedUserId);
             });
-        });
+        }
+
+        function addUserToSidebar(user) {
+            if (!user || !user.userId || user.userId === currentUserId) {
+                return;
+            }
+
+            if (document.querySelector('.user-list-item[data-userid="' + user.userId + '"]')) {
+                return;
+            }
+
+            const list = document.querySelector('.overflow-auto.flex-grow-1');
+            const emptyState = list.querySelector('.text-muted.small');
+            if (emptyState) {
+                emptyState.remove();
+            }
+
+            const item = document.createElement('div');
+            item.className = 'user-list-item list-group-item list-group-item-action p-3';
+            item.dataset.userid = user.userId;
+            item.dataset.username = user.username || '';
+            item.dataset.profilepictureurl = user.profilePictureUrl || '';
+            item.textContent = user.username || 'Unknown user';
+
+            userProfilePictureById[user.userId] = user.profilePictureUrl || '';
+            registerUserListItem(item);
+            list.appendChild(item);
+        }
+
+        function connect() {
+            const socket = new SockJS('/ws');
+            stompClient = Stomp.over(socket);
+            stompClient.debug = null; // suppress console spam
+            stompClient.connect({}, () => {
+                console.log('WebSocket connected');
+
+                usersTopicSubscription = stompClient.subscribe('/topic/users.created', (msg) => {
+                    addUserToSidebar(JSON.parse(msg.body));
+                });
+            });
+        }
+
+        // Build the same conversationId as the backend
+        function buildConversationId(id1, id2) {
+            return id1 < id2 ? id1 + '#' + id2 : id2 + '#' + id1;
+        }
 
         function loadHistory(recipientId) {
             document.getElementById('messages').innerHTML = '';

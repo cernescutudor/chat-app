@@ -1,8 +1,10 @@
 package com.chatapp.chatapp.service;
 
 import com.chatapp.chatapp.model.User;
+import com.chatapp.chatapp.model.UserSummary;
 import com.chatapp.chatapp.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -17,6 +19,7 @@ public class UserService implements UserDetailsService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final SimpMessagingTemplate messagingTemplate;
 
     public void register(String username, String email, String password) {
         // Check if email already taken
@@ -38,6 +41,9 @@ public class UserService implements UserDetailsService {
                 .build();
 
         userRepository.save(user);
+
+        messagingTemplate.convertAndSend("/topic/users.created",
+            new UserSummary(user.getUserId(), user.getUsername(), user.getProfilePictureUrl()));
     }
 
     public User getUserById(String userId) {
