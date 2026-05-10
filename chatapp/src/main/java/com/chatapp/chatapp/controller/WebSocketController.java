@@ -33,7 +33,7 @@ public class WebSocketController {
         String recipientId = payload.get("recipientId");
         String content = payload.get("content");
 
-        Message message = chatService.sendMessage(
+        Message message = chatService.sendTextMessage(
                 sender.getUserId(),
                 recipientId,
                 sender.getUsername(),

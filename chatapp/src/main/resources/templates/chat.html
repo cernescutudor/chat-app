@@ -94,6 +94,22 @@
             word-wrap: break-word;
         }
 
+        .message-bubble.image-message {
+            padding: 8px;
+            background: transparent;
+        }
+
+        .message-image {
+            display: block;
+            max-width: 320px;
+            max-height: 320px;
+            width: 100%;
+            height: auto;
+            border-radius: 14px;
+            object-fit: cover;
+            background: #dbe2ea;
+        }
+
         .message-mine {
             background-color: #0d6efd;
             color: white;
@@ -112,6 +128,39 @@
         .user-list-item.active {
             background-color: #0d6efd;
             color: white;
+        }
+
+        .modal-message-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .modal-message-image {
+            max-width: 100%;
+            max-height: 70vh;
+            width: auto;
+            height: auto;
+            border-radius: 8px;
+            object-fit: contain;
+        }
+
+        .modal-message-text {
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+            width: 100%;
+        }
+
+        .modal-message-meta {
+            font-size: 0.875rem;
+            color: #6c757d;
+            text-align: center;
         }
     </style>
 </head>
@@ -158,10 +207,33 @@
                             disabled>
                         <button class="btn btn-primary" id="sendBtn" disabled>Send</button>
                     </div>
+                    <div class="input-group mt-2">
+                        <input type="file" id="imageInput" class="form-control" accept="image/*" disabled>
+                        <button class="btn btn-outline-primary" id="uploadImageBtn" disabled>Send image</button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- Message Detail Modal -->
+    <div class="modal fade" id="messageModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Message Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="modalMessageContent" class="modal-message-content"></div>
+                    <div id="modalMessageMeta" class="modal-message-meta mt-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
     <!-- SockJS + STOMP -->
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
@@ -181,6 +253,8 @@
         const userProfilePictureById = {
             [currentUserId]: currentUserProfilePictureUrl || ''
         };
+        const imageInput = document.getElementById('imageInput');
+        const uploadImageBtn = document.getElementById('uploadImageBtn');
 
         document.querySelectorAll('.user-list-item').forEach(item => {
             userProfilePictureById[item.dataset.userid] = item.dataset.profilepictureurl || '';
@@ -200,6 +274,9 @@
                     'Chatting with ' + selectedUsername;
                 document.getElementById('messageInput').disabled = false;
                 document.getElementById('sendBtn').disabled = false;
+                imageInput.disabled = false;
+                uploadImageBtn.disabled = false;
+                imageInput.value = '';
 
                 // Unsubscribe from previous conversation
                 if (currentSubscription) currentSubscription.unsubscribe();
@@ -299,6 +376,34 @@
             return placeholder;
         }
 
+        function createMediaUrl(mediaKey) {
+            return '/api/messages/media?key=' + encodeURIComponent(mediaKey);
+        }
+
+        function renderMessageBody(message, bubble, isClickable = true) {
+            const isImageMessage = message.messageType === 'IMAGE' || !!message.mediaUrl;
+
+            if (isImageMessage) {
+                bubble.classList.add('image-message');
+
+                const image = document.createElement('img');
+                image.className = 'message-image';
+                image.src = message.mediaUrl || createMediaUrl(message.mediaKey);
+                image.alt = 'Chat image';
+                image.style.cursor = 'pointer';
+                image.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openMessageModal(message);
+                });
+                bubble.appendChild(image);
+                return;
+            }
+
+            const text = document.createElement('div');
+            text.textContent = message.content || '';
+            bubble.appendChild(text);
+        }
+
         function displayMessage(message) {
             const container = document.getElementById('messages');
             const isMine = message.senderId === currentUserId;
@@ -323,9 +428,7 @@
                 bubble.appendChild(name);
             }
 
-            const text = document.createElement('div');
-            text.textContent = message.content;
-            bubble.appendChild(text);
+            renderMessageBody(message, bubble);
 
             if (isMine) {
                 wrapper.appendChild(bubble);
@@ -346,6 +449,8 @@
             if (e.key === 'Enter') sendMessage();
         });
 
+        uploadImageBtn.addEventListener('click', uploadImageMessage);
+
         function sendMessage() {
             const input = document.getElementById('messageInput');
             const content = input.value.trim();
@@ -357,6 +462,83 @@
             }));
 
             input.value = '';
+        }
+
+        function uploadImageMessage() {
+            const file = imageInput.files[0];
+            if (!file || !selectedUserId) {
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('recipientId', selectedUserId);
+            formData.append('file', file);
+
+            uploadImageBtn.disabled = true;
+
+            fetch('/api/messages/image', {
+                method: 'POST',
+                body: formData
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Image upload failed');
+                    }
+                    return response.json();
+                })
+                .then(() => {
+                    imageInput.value = '';
+                })
+                .catch(() => {
+                    alert('Could not send the image. Please try again.');
+                })
+                .finally(() => {
+                    uploadImageBtn.disabled = !selectedUserId;
+                });
+        }
+
+        function formatMessageTime(timestamp) {
+            if (!timestamp) return '';
+            try {
+                const date = new Date(timestamp);
+                return date.toLocaleString();
+            } catch (e) {
+                return timestamp;
+            }
+        }
+
+        function openMessageModal(message) {
+            const modalContent = document.getElementById('modalMessageContent');
+            const modalMeta = document.getElementById('modalMessageMeta');
+            const isImageMessage = message.messageType === 'IMAGE' || !!message.mediaUrl;
+            const isMine = message.senderId === currentUserId;
+
+            // Clear previous content
+            modalContent.innerHTML = '';
+            modalMeta.innerHTML = '';
+
+            // Display message content
+            if (isImageMessage) {
+                const image = document.createElement('img');
+                image.className = 'modal-message-image';
+                image.src = message.mediaUrl || createMediaUrl(message.mediaKey);
+                image.alt = 'Chat image';
+                modalContent.appendChild(image);
+            } else {
+                const text = document.createElement('div');
+                text.className = 'modal-message-text';
+                text.textContent = message.content || '';
+                modalContent.appendChild(text);
+            }
+
+            // Display metadata
+            const senderName = isMine ? 'You' : message.senderUsername;
+            const timeStr = formatMessageTime(message.timestamp);
+            modalMeta.innerHTML = `<strong>${senderName}</strong> • ${timeStr}`;
+
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('messageModal'));
+            modal.show();
         }
 
         connect();
