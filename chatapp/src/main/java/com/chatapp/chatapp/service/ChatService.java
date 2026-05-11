@@ -16,17 +16,39 @@ public class ChatService {
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
 
-    public Message sendMessage(String senderId, String recipientId,
-                               String senderUsername, String content) {
-        // Conversation ID is always sorted so "user1#user2" == "user2#user1"
+    public Message sendTextMessage(String senderId, String recipientId,
+                                   String senderUsername, String content) {
         String conversationId = buildConversationId(senderId, recipientId);
 
         Message message = Message.builder()
                 .conversationId(conversationId)
                 .timestamp(Instant.now().toString())
                 .senderId(senderId)
+                .recipientId(recipientId)
                 .senderUsername(senderUsername)
                 .content(content)
+                .messageType("TEXT")
+                .build();
+
+        messageRepository.save(message);
+        return message;
+    }
+
+    public Message sendImageMessage(String senderId, String recipientId,
+                                    String senderUsername, String mediaKey,
+                                    String mediaUrl, String mediaContentType) {
+        String conversationId = buildConversationId(senderId, recipientId);
+
+        Message message = Message.builder()
+                .conversationId(conversationId)
+                .timestamp(Instant.now().toString())
+                .senderId(senderId)
+                .recipientId(recipientId)
+                .senderUsername(senderUsername)
+                .messageType("IMAGE")
+                .mediaKey(mediaKey)
+                .mediaUrl(mediaUrl)
+                .mediaContentType(mediaContentType)
                 .build();
 
         messageRepository.save(message);

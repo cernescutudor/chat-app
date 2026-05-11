@@ -18,10 +18,10 @@ public class AwsConfig {
     @Value("${aws.region}")
     private String region;
 
-    @Value("${aws.accessKeyId}")
+    @Value("${aws.access-key-id}")
     private String accessKeyId;
 
-    @Value("${aws.secretAccessKey}")
+    @Value("${aws.secret-access-key}")
     private String secretAccessKey;
 
     @Value("${aws.dynamodb.endpoint:}")
