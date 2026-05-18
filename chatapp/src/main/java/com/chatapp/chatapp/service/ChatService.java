@@ -15,9 +15,14 @@ public class ChatService {
 
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
+    private final FriendRequestService friendRequestService;
 
     public Message sendTextMessage(String senderId, String recipientId,
                                    String senderUsername, String content) {
+        if (!friendRequestService.areFriends(senderId, recipientId)) {
+            throw new RuntimeException("You can only message users who have accepted your friend request");
+        }
+
         String conversationId = buildConversationId(senderId, recipientId);
 
         Message message = Message.builder()
@@ -37,6 +42,10 @@ public class ChatService {
     public Message sendImageMessage(String senderId, String recipientId,
                                     String senderUsername, String mediaKey,
                                     String mediaUrl, String mediaContentType) {
+        if (!friendRequestService.areFriends(senderId, recipientId)) {
+            throw new RuntimeException("You can only message users who have accepted your friend request");
+        }
+
         String conversationId = buildConversationId(senderId, recipientId);
 
         Message message = Message.builder()

@@ -162,6 +162,66 @@
             color: #6c757d;
             text-align: center;
         }
+
+        .chat-state-panel {
+            border: 1px solid #dee2e6;
+            border-radius: 12px;
+            background: #fff;
+            padding: 1rem;
+        }
+
+        .chat-state-panel .text-muted {
+            margin-bottom: 0;
+        }
+
+        .friend-request-item {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+            padding: 0.75rem;
+            font-size: 0.85rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .friend-request-item-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .friend-request-item-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .friend-request-item-actions button {
+            flex: 1;
+            padding: 0.35rem 0.6rem;
+            font-size: 0.75rem;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .friend-request-item-actions .btn-accept {
+            background: #198754;
+            color: white;
+        }
+
+        .friend-request-item-actions .btn-accept:hover {
+            background: #157347;
+        }
+
+        .friend-request-item-actions .btn-reject {
+            background: #dc3545;
+            color: white;
+        }
+
+        .friend-request-item-actions .btn-reject:hover {
+            background: #bb2d3b;
+        }
     </style>
 </head>
 
@@ -182,6 +242,13 @@
                         <button type="submit" class="btn btn-sm btn-outline-danger">Logout</button>
                     </form>
                 </div>
+                
+                <!-- Pending friend requests section -->
+                <div id="pendingRequestsSection" class="border-bottom p-3 d-none">
+                    <div class="small fw-bold mb-2 text-success">Friend Requests</div>
+                    <div id="pendingRequestsList" class="d-flex flex-column gap-2"></div>
+                </div>
+                
                 <div class="overflow-auto flex-grow-1">
                     <div th:each="user : ${users}" class="user-list-item list-group-item list-group-item-action p-3"
                         th:data-userid="${user.userId}" th:data-username="${user.username}"
@@ -201,15 +268,27 @@
 
                 <div id="messages"></div>
 
-                <div class="mt-2">
+                <div id="chatControls" class="mt-2 d-none">
                     <div class="input-group">
-                        <input type="text" id="messageInput" class="form-control" placeholder="Type a message..."
-                            disabled>
-                        <button class="btn btn-primary" id="sendBtn" disabled>Send</button>
+                        <input type="text" id="messageInput" class="form-control" placeholder="Type a message...">
+                        <button class="btn btn-primary" id="sendBtn">Send</button>
                     </div>
                     <div class="input-group mt-2">
-                        <input type="file" id="imageInput" class="form-control" accept="image/*" disabled>
-                        <button class="btn btn-outline-primary" id="uploadImageBtn" disabled>Send image</button>
+                        <input type="file" id="imageInput" class="form-control" accept="image/*">
+                        <button class="btn btn-outline-primary" id="uploadImageBtn">Send image</button>
+                    </div>
+                </div>
+
+                <div id="friendRequestControls" class="mt-2 d-none">
+                    <div class="chat-state-panel d-flex flex-column flex-md-row gap-3 align-items-md-center justify-content-between">
+                        <div>
+                            <strong>Not friends yet</strong>
+                            <div class="text-muted small">Send a friend request to unlock chat and image sharing.</div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span id="friendRequestStatus" class="small text-muted"></span>
+                            <button id="addFriendBtn" class="btn btn-success" disabled>Add friend</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -249,12 +328,166 @@
         let selectedUsername = null;
         let currentSubscription = null;
         let usersTopicSubscription = null;
+        let friendRequestsSubscription = null;
         let lastRenderedSenderId = null;
+        let friendIds = new Set();
+        let pendingFriendRequestRecipientIds = new Set();
+        let pendingIncomingFriendRequests = new Map(); // requestId -> notification
+        let currentFriendRequestStatus = null;
         const userProfilePictureById = {
             [currentUserId]: currentUserProfilePictureUrl || ''
         };
         const imageInput = document.getElementById('imageInput');
         const uploadImageBtn = document.getElementById('uploadImageBtn');
+        const chatControls = document.getElementById('chatControls');
+        const friendRequestControls = document.getElementById('friendRequestControls');
+        const addFriendBtn = document.getElementById('addFriendBtn');
+        const friendRequestStatus = document.getElementById('friendRequestStatus');
+
+        imageInput.disabled = false;
+        uploadImageBtn.disabled = false;
+
+        function renderSelectionState() {
+            const messageInput = document.getElementById('messageInput');
+            const sendBtn = document.getElementById('sendBtn');
+
+            if (!selectedUserId) {
+                chatControls.classList.add('d-none');
+                friendRequestControls.classList.add('d-none');
+                document.getElementById('chat-header').textContent = 'Select a user to start chatting';
+                document.getElementById('messages').innerHTML = '';
+                return;
+            }
+
+            const isFriend = friendIds.has(selectedUserId);
+            document.getElementById('chat-header').textContent =
+                isFriend ? 'Chatting with ' + selectedUsername : 'Send a friend request to ' + selectedUsername;
+
+            if (isFriend) {
+                friendRequestControls.classList.add('d-none');
+                chatControls.classList.remove('d-none');
+                messageInput.disabled = false;
+                sendBtn.disabled = false;
+                imageInput.disabled = false;
+                uploadImageBtn.disabled = false;
+                imageInput.value = '';
+                friendRequestStatus.textContent = '';
+                addFriendBtn.disabled = false;
+                addFriendBtn.textContent = 'Add friend';
+                currentFriendRequestStatus = null;
+            } else {
+                chatControls.classList.add('d-none');
+                friendRequestControls.classList.remove('d-none');
+                messageInput.disabled = true;
+                sendBtn.disabled = true;
+                imageInput.disabled = true;
+                uploadImageBtn.disabled = true;
+                imageInput.value = '';
+                friendRequestStatus.textContent = currentFriendRequestStatus || '';
+                addFriendBtn.disabled = currentFriendRequestStatus === 'pending';
+                addFriendBtn.textContent = currentFriendRequestStatus === 'pending' ? 'Request sent' : 'Add friend';
+            }
+        }
+
+        function loadFriends() {
+            return fetch('/api/friends')
+                .then(response => response.json())
+                .then(users => {
+                    friendIds = new Set((users || []).map(user => user.userId));
+                })
+                .catch(() => {
+                    friendIds = new Set();
+                })
+                .finally(() => {
+                    renderSelectionState();
+                    if (selectedUserId && friendIds.has(selectedUserId)) {
+                        loadConversationForSelectedUser();
+                    }
+                });
+        }
+
+        function loadOutgoingPendingFriendRequests() {
+            return fetch('/api/friend-requests/sent-pending')
+                .then(response => response.json())
+                .then(requests => {
+                    pendingFriendRequestRecipientIds = new Set((requests || []).map(request => request.recipientId));
+                })
+                .catch(() => {
+                    pendingFriendRequestRecipientIds = new Set();
+                });
+        }
+
+        function loadIncomingPendingFriendRequests() {
+            return fetch('/api/friend-requests/pending')
+                .then(response => response.json())
+                .then(requests => {
+                    pendingIncomingFriendRequests.clear();
+                    (requests || []).forEach(request => {
+                        const notification = {
+                            requestId: request.requestId,
+                            senderId: request.senderId,
+                            senderUsername: request.senderUsername,
+                            recipientId: request.recipientId,
+                            timestamp: request.timestamp,
+                            status: request.status
+                        };
+                        pendingIncomingFriendRequests.set(request.requestId, notification);
+                    });
+                    renderPendingIncomingRequests();
+                })
+                .catch(() => {
+                    pendingIncomingFriendRequests.clear();
+                    renderPendingIncomingRequests();
+                });
+        }
+
+        function resetConversationSubscription() {
+            if (currentSubscription) {
+                currentSubscription.unsubscribe();
+                currentSubscription = null;
+            }
+        }
+
+        function loadConversationForSelectedUser() {
+            if (!selectedUserId || !friendIds.has(selectedUserId)) {
+                document.getElementById('messages').innerHTML = '';
+                lastRenderedSenderId = null;
+                return;
+            }
+
+            resetConversationSubscription();
+
+            const conversationId = buildConversationId(currentUserId, selectedUserId);
+
+            currentSubscription = stompClient.subscribe(
+                '/topic/conversation.' + conversationId,
+                (msg) => {
+                    const message = JSON.parse(msg.body);
+                    displayMessage(message);
+                }
+            );
+
+            loadHistory(selectedUserId);
+        }
+
+        function selectUser(item) {
+            document.querySelectorAll('.user-list-item')
+                .forEach(i => i.classList.remove('active'));
+            item.classList.add('active');
+
+            selectedUserId = item.dataset.userid;
+            selectedUsername = item.dataset.username;
+            currentFriendRequestStatus = pendingFriendRequestRecipientIds.has(selectedUserId) ? 'pending' : null;
+            renderSelectionState();
+
+            if (friendIds.has(selectedUserId)) {
+                loadConversationForSelectedUser();
+            } else {
+                resetConversationSubscription();
+                document.getElementById('messages').innerHTML = '';
+                lastRenderedSenderId = null;
+            }
+        }
 
         document.querySelectorAll('.user-list-item').forEach(item => {
             userProfilePictureById[item.dataset.userid] = item.dataset.profilepictureurl || '';
@@ -263,37 +496,7 @@
 
         function registerUserListItem(item) {
             item.addEventListener('click', () => {
-                document.querySelectorAll('.user-list-item')
-                    .forEach(i => i.classList.remove('active'));
-                item.classList.add('active');
-
-                selectedUserId = item.dataset.userid;
-                selectedUsername = item.dataset.username;
-
-                document.getElementById('chat-header').textContent =
-                    'Chatting with ' + selectedUsername;
-                document.getElementById('messageInput').disabled = false;
-                document.getElementById('sendBtn').disabled = false;
-                imageInput.disabled = false;
-                uploadImageBtn.disabled = false;
-                imageInput.value = '';
-
-                // Unsubscribe from previous conversation
-                if (currentSubscription) currentSubscription.unsubscribe();
-
-                const conversationId = buildConversationId(currentUserId, selectedUserId);
-
-                // Subscribe to new conversation topic
-                currentSubscription = stompClient.subscribe(
-                    '/topic/conversation.' + conversationId,
-                    (msg) => {
-                        const message = JSON.parse(msg.body);
-                        displayMessage(message);
-                    }
-                );
-
-                // Load existing messages via REST
-                loadHistory(selectedUserId);
+                selectUser(item);
             });
         }
 
@@ -324,6 +527,136 @@
             list.appendChild(item);
         }
 
+        function handleIncomingFriendRequest(notification) {
+            if (!notification || !notification.requestId) {
+                return;
+            }
+
+            if (notification.status === 'ACCEPTED') {
+                handleAcceptedFriendRequest(notification);
+                return;
+            }
+
+            // Store the incoming friend request
+            pendingIncomingFriendRequests.set(notification.requestId, notification);
+            // Render all pending incoming requests
+            renderPendingIncomingRequests();
+        }
+
+        function handleAcceptedFriendRequest(notification) {
+            const friendUserId = notification.senderId === currentUserId
+                ? notification.recipientId
+                : notification.senderId;
+
+            if (!friendUserId) {
+                return;
+            }
+
+            friendIds.add(friendUserId);
+            pendingFriendRequestRecipientIds.delete(friendUserId);
+            pendingIncomingFriendRequests.delete(notification.requestId);
+
+            if (selectedUserId === friendUserId) {
+                currentFriendRequestStatus = null;
+                renderSelectionState();
+                loadConversationForSelectedUser();
+                return;
+            }
+
+            renderPendingIncomingRequests();
+        }
+
+        function renderPendingIncomingRequests() {
+            const section = document.getElementById('pendingRequestsSection');
+            const list = document.getElementById('pendingRequestsList');
+            
+            if (pendingIncomingFriendRequests.size === 0) {
+                section.classList.add('d-none');
+                list.innerHTML = '';
+                return;
+            }
+
+            section.classList.remove('d-none');
+            list.innerHTML = '';
+
+            for (const [requestId, notification] of pendingIncomingFriendRequests) {
+                const item = document.createElement('div');
+                item.className = 'friend-request-item';
+                item.dataset.requestid = requestId;
+
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'friend-request-item-name';
+                nameDiv.textContent = notification.senderUsername;
+
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'friend-request-item-actions';
+
+                const acceptBtn = document.createElement('button');
+                acceptBtn.className = 'btn-accept';
+                acceptBtn.textContent = 'Accept';
+                acceptBtn.addEventListener('click', () => acceptFriendRequestIncoming(requestId, notification.senderId));
+
+                const rejectBtn = document.createElement('button');
+                rejectBtn.className = 'btn-reject';
+                rejectBtn.textContent = 'Reject';
+                rejectBtn.addEventListener('click', () => rejectFriendRequestIncoming(requestId));
+
+                actionsDiv.appendChild(acceptBtn);
+                actionsDiv.appendChild(rejectBtn);
+
+                item.appendChild(nameDiv);
+                item.appendChild(actionsDiv);
+                list.appendChild(item);
+            }
+        }
+
+        function acceptFriendRequestIncoming(requestId, senderId) {
+            fetch('/api/friend-requests/' + encodeURIComponent(requestId) + '/accept', {
+                method: 'POST'
+            })
+                .then(async response => {
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(payload.error || 'Could not accept friend request');
+                    }
+
+                    // Remove from pending and add to friends
+                    pendingIncomingFriendRequests.delete(requestId);
+                    friendIds.add(senderId);
+                    renderPendingIncomingRequests();
+
+                    // If this user is selected, update the chat interface
+                    if (selectedUserId === senderId) {
+                        renderSelectionState();
+                        loadConversationForSelectedUser();
+                    }
+                })
+                .catch(error => {
+                    alert(error.message || 'Could not accept friend request.');
+                });
+        }
+
+        function rejectFriendRequestIncoming(requestId) {
+            if (!requestId) return;
+
+            fetch('/api/friend-requests/' + encodeURIComponent(requestId) + '/reject', {
+                method: 'POST'
+            })
+                .then(async response => {
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(payload.error || 'Could not reject friend request');
+                    }
+
+                    // Remove from pending list in the UI
+                    pendingIncomingFriendRequests.delete(requestId);
+                    renderPendingIncomingRequests();
+                })
+                .catch(error => {
+                    alert(error.message || 'Could not reject friend request.');
+                });
+        }
+
         function connect() {
             const socket = new SockJS('/ws');
             stompClient = Stomp.over(socket);
@@ -334,6 +667,14 @@
                 usersTopicSubscription = stompClient.subscribe('/topic/users.created', (msg) => {
                     addUserToSidebar(JSON.parse(msg.body));
                 });
+
+                // Subscribe to incoming friend requests for this userId.
+                friendRequestsSubscription = stompClient.subscribe('/topic/friend-requests.' + currentUserId, (msg) => {
+                    handleIncomingFriendRequest(JSON.parse(msg.body));
+                });
+
+                Promise.all([loadFriends(), loadOutgoingPendingFriendRequests(), loadIncomingPendingFriendRequests()])
+                    .then(() => renderSelectionState());
             });
         }
 
@@ -450,11 +791,12 @@
         });
 
         uploadImageBtn.addEventListener('click', uploadImageMessage);
+        addFriendBtn.addEventListener('click', sendFriendRequest);
 
         function sendMessage() {
             const input = document.getElementById('messageInput');
             const content = input.value.trim();
-            if (!content || !selectedUserId) return;
+            if (!content || !selectedUserId || !friendIds.has(selectedUserId)) return;
 
             stompClient.send('/app/chat.send', {}, JSON.stringify({
                 recipientId: selectedUserId,
@@ -466,7 +808,7 @@
 
         function uploadImageMessage() {
             const file = imageInput.files[0];
-            if (!file || !selectedUserId) {
+            if (!file || !selectedUserId || !friendIds.has(selectedUserId)) {
                 return;
             }
 
@@ -493,7 +835,47 @@
                     alert('Could not send the image. Please try again.');
                 })
                 .finally(() => {
-                    uploadImageBtn.disabled = !selectedUserId;
+                    uploadImageBtn.disabled = !selectedUserId || !friendIds.has(selectedUserId);
+                });
+        }
+
+        function sendFriendRequest() {
+            if (!selectedUserId || friendIds.has(selectedUserId) || currentFriendRequestStatus === 'pending') {
+                return;
+            }
+
+            addFriendBtn.disabled = true;
+            addFriendBtn.textContent = 'Sending...';
+
+            fetch('/api/friend-requests/send/' + encodeURIComponent(selectedUserId), {
+                method: 'POST'
+            })
+                .then(async response => {
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(payload.error || 'Could not send friend request');
+                    }
+
+                    if (payload.status === 'ACCEPTED') {
+                        friendIds.add(selectedUserId);
+                        pendingFriendRequestRecipientIds.delete(selectedUserId);
+                        currentFriendRequestStatus = null;
+                        renderSelectionState();
+                        loadConversationForSelectedUser();
+                        return;
+                    }
+
+                    pendingFriendRequestRecipientIds.add(selectedUserId);
+                    currentFriendRequestStatus = 'pending';
+                    friendRequestStatus.textContent = 'Friend request sent';
+                    renderSelectionState();
+                })
+                .catch(error => {
+                    currentFriendRequestStatus = null;
+                    friendRequestStatus.textContent = '';
+                    addFriendBtn.disabled = false;
+                    addFriendBtn.textContent = 'Add friend';
+                    alert(error.message || 'Could not send friend request.');
                 });
         }
 

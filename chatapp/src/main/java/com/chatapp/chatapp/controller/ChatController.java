@@ -4,6 +4,7 @@ import com.chatapp.chatapp.model.Message;
 import com.chatapp.chatapp.model.User;
 import com.chatapp.chatapp.repository.UserRepository;
 import com.chatapp.chatapp.service.ChatService;
+import com.chatapp.chatapp.service.FriendRequestService;
 import com.chatapp.chatapp.service.MessageMediaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.ByteArrayResource;
@@ -22,16 +23,17 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 @Controller
 @RequiredArgsConstructor
 public class ChatController {
-
     private final ChatService chatService;
     private final UserRepository userRepository;
     private final MessageMediaService messageMediaService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final FriendRequestService friendRequestService;
 
     @GetMapping("/chat")
     public String chatPage(Authentication authentication, Model model) {
@@ -50,6 +52,16 @@ public class ChatController {
         return "chat";
     }
 
+    @GetMapping("/api/friends")
+    public ResponseEntity<List<User>> getFriends(Authentication authentication) {
+        String email = authentication.getName();
+        User currentUser = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        List<User> friends = friendRequestService.getFriendsWithDetails(currentUser.getUserId());
+        return ResponseEntity.ok(friends);
+    }
+
     @GetMapping("/api/messages/{recipientId}")
     public ResponseEntity<List<Message>> getMessages(
             @PathVariable String recipientId,
@@ -66,7 +78,7 @@ public class ChatController {
     }
 
     @PostMapping("/api/messages/image")
-    public ResponseEntity<Message> sendImageMessage(Authentication authentication,
+    public ResponseEntity<?> sendImageMessage(Authentication authentication,
                                                     @RequestParam String recipientId,
                                                     @RequestParam MultipartFile file) {
         String email = authentication.getName();
@@ -76,20 +88,24 @@ public class ChatController {
         User recipient = userRepository.findById(recipientId)
                 .orElseThrow(() -> new RuntimeException("Recipient not found"));
 
-        String conversationId = buildConversationId(currentUser.getUserId(), recipient.getUserId());
-        MessageMediaService.MediaUploadResult uploadResult = messageMediaService.uploadImage(conversationId, file);
+        try {
+            String conversationId = buildConversationId(currentUser.getUserId(), recipient.getUserId());
+            MessageMediaService.MediaUploadResult uploadResult = messageMediaService.uploadImage(conversationId, file);
 
-        Message message = chatService.sendImageMessage(
-                currentUser.getUserId(),
-                recipient.getUserId(),
-                currentUser.getUsername(),
-                uploadResult.mediaKey(),
-                uploadResult.mediaUrl(),
-                uploadResult.contentType()
-        );
+            Message message = chatService.sendImageMessage(
+                    currentUser.getUserId(),
+                    recipient.getUserId(),
+                    currentUser.getUsername(),
+                    uploadResult.mediaKey(),
+                    uploadResult.mediaUrl(),
+                    uploadResult.contentType()
+            );
 
-        messagingTemplate.convertAndSend("/topic/conversation." + conversationId, message);
-        return ResponseEntity.ok(message);
+            messagingTemplate.convertAndSend("/topic/conversation." + conversationId, message);
+            return ResponseEntity.ok(message);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
     @GetMapping("/api/messages/media")
