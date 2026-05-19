@@ -35,3 +35,7 @@ out/
 
 ### VS Code ###
 .vscode/
+
+# DEV files
+*.dev.java
+*.dev.html

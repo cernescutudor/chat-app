@@ -2,6 +2,7 @@ package com.chatapp.chatapp.controller;
 
 import com.chatapp.chatapp.model.Message;
 import com.chatapp.chatapp.model.User;
+import com.chatapp.chatapp.model.FriendRequest;
 import com.chatapp.chatapp.repository.UserRepository;
 import com.chatapp.chatapp.service.ChatService;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +12,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @Controller
@@ -33,19 +35,35 @@ public class WebSocketController {
         String recipientId = payload.get("recipientId");
         String content = payload.get("content");
 
-        Message message = chatService.sendTextMessage(
-                sender.getUserId(),
-                recipientId,
-                sender.getUsername(),
-                content
-        );
+        try {
+            Message message = chatService.sendTextMessage(
+                    sender.getUserId(),
+                    recipientId,
+                    sender.getUsername(),
+                    content
+            );
 
-        // Build conversation ID the same way ChatService does
-        String conversationId = sender.getUserId().compareTo(recipientId) < 0
-                ? sender.getUserId() + "#" + recipientId
-                : recipientId + "#" + sender.getUserId();
+            // Build conversation ID the same way ChatService does
+            String conversationId = sender.getUserId().compareTo(recipientId) < 0
+                    ? sender.getUserId() + "#" + recipientId
+                    : recipientId + "#" + sender.getUserId();
 
-        // Broadcast to everyone subscribed to this conversation topic
-        messagingTemplate.convertAndSend("/topic/conversation." + conversationId, message);
+            // Broadcast to everyone subscribed to this conversation topic
+            messagingTemplate.convertAndSend("/topic/conversation." + conversationId, message);
+        } catch (RuntimeException e) {
+            // Send error message back to the sender
+            Map<String, Object> errorMessage = new HashMap<>();
+            errorMessage.put("type", "ERROR");
+            errorMessage.put("error", e.getMessage());
+            messagingTemplate.convertAndSendToUser(
+                    sender.getUsername(),
+                    "/queue/errors",
+                    errorMessage
+            );
+        }
+    }
+
+    public void notifyFriendRequest(FriendRequest request, String recipientId) {
+        messagingTemplate.convertAndSend("/topic/friend-requests." + recipientId, request);
     }
 }
