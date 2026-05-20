@@ -43,13 +43,23 @@ public class ChatController {
 
         model.addAttribute("currentUser", currentUser);
 
-        List<User> otherUsers = userRepository.findAll()
-                .stream()
-                .filter(u -> !u.getUserId().equals(currentUser.getUserId()))
-                .toList();
+        List<User> friends = friendRequestService.getFriendsWithDetails(currentUser.getUserId());
 
-        model.addAttribute("users", otherUsers);
+        model.addAttribute("users", friends);
         return "chat";
+    }
+
+    @GetMapping("/api/users/search")
+    public ResponseEntity<List<User>> searchUsers(@RequestParam String username, Authentication authentication) {
+        String email = authentication.getName();
+        User currentUser = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        List<User> matchedUsers = userRepository.findAll().stream()
+                .filter(u -> !u.getUserId().equals(currentUser.getUserId()))
+                .filter(u -> u.getUsername() != null && u.getUsername().toLowerCase().contains(username.toLowerCase()))
+                .toList();
+        return ResponseEntity.ok(matchedUsers);
     }
 
     @GetMapping("/api/friends")

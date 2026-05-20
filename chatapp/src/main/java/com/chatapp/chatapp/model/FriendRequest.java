@@ -20,6 +20,7 @@ public class FriendRequest {
     private String recipientUsername;
     private String status;
     private String timestamp;
+    private String message;
 
     @DynamoDbPartitionKey
     public String getRequestId() {
