@@ -18,7 +18,7 @@ public class ChatService {
     private final FriendRequestService friendRequestService;
 
     public Message sendTextMessage(String senderId, String recipientId,
-                                   String senderUsername, String content) {
+            String senderUsername, String content) {
         if (!friendRequestService.areFriends(senderId, recipientId)) {
             throw new RuntimeException("You can only message users who have accepted your friend request");
         }
@@ -39,9 +39,19 @@ public class ChatService {
         return message;
     }
 
+    public void markConversationAsSeen(String userId, String otherUserId) {
+        String conversationId = buildConversationId(userId, otherUserId);
+        messageRepository.findByConversationId(conversationId).stream()
+                .filter(m -> !m.getSenderId().equals(userId) && !m.isSeen())
+                .forEach(m -> {
+                    m.setSeen(true);
+                    messageRepository.save(m);
+                });
+    }
+
     public Message sendImageMessage(String senderId, String recipientId,
-                                    String senderUsername, String mediaKey,
-                                    String mediaUrl, String mediaContentType) {
+            String senderUsername, String mediaKey,
+            String mediaUrl, String mediaContentType) {
         if (!friendRequestService.areFriends(senderId, recipientId)) {
             throw new RuntimeException("You can only message users who have accepted your friend request");
         }

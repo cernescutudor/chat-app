@@ -391,6 +391,7 @@
         let outgoingPendingRequests = new Map(); // recipientId -> request object
         let pendingIncomingFriendRequests = new Map(); // requestId -> notification
         let currentFriendRequestStatus = null;
+        let unreadCounts = new Map();
         const userProfilePictureById = {
             [currentUserId]: currentUserProfilePictureUrl || ''
         };
@@ -478,15 +479,26 @@
                 .then(response => response.json())
                 .then(users => {
                     friendIds = new Set((users || []).map(user => user.userId));
+                    // Load unread counts for each friend
+                    return Promise.all((users || []).map(user =>
+                        fetch('/api/messages/' + user.userId)
+                            .then(res => res.json())
+                            .then(messages => {
+                                const unread = messages.filter(
+                                    m => !m.seen && m.senderId !== currentUserId
+                                ).length;
+                                if (unread > 0) {
+                                    unreadCounts.set(user.userId, unread);
+                                }
+                            })
+                            .catch(() => { })
+                    ));
                 })
-                .catch(() => {
-                    friendIds = new Set();
-                })
+                .catch(() => { friendIds = new Set(); })
                 .finally(() => {
                     renderSelectionState();
-                    if (selectedUserId && friendIds.has(selectedUserId)) {
-                        loadConversationForSelectedUser();
-                    }
+                    // Apply badges after friends are loaded
+                    unreadCounts.forEach((count, userId) => setUnreadBadge(userId, count));
                 });
         }
 
@@ -552,6 +564,22 @@
                 (msg) => {
                     const message = JSON.parse(msg.body);
                     displayMessage(message);
+
+                    const senderId = message.senderId;
+
+                    if (senderId !== currentUserId) {
+                        if (selectedUserId === senderId) {
+                            // Conversation is open — mark as seen immediately
+                            markAsSeen(senderId);
+                        } else {
+                            // Conversation is not open — increment badge
+                            const current = unreadCounts.get(senderId) || 0;
+                            unreadCounts.set(senderId, current + 1);
+                            setUnreadBadge(senderId, current + 1);
+                        }
+                        // Move sender to top of sidebar regardless
+                        moveUserToTop(senderId);
+                    }
                 }
             );
 
@@ -920,6 +948,44 @@
                 });
         }
 
+        function moveUserToTop(userId) {
+            const list = document.getElementById('userListContainer');
+            const item = list.querySelector('.user-list-item[data-userid="' + userId + '"]');
+            if (item && list.firstChild !== item) {
+                list.insertBefore(item, list.firstChild);
+            }
+        }
+
+        function setUnreadBadge(userId, count) {
+            const item = document.querySelector('.user-list-item[data-userid="' + userId + '"]');
+            if (!item) return;
+
+            let badge = item.querySelector('.unread-badge');
+            if (count > 0) {
+                if (!badge) {
+                    badge = document.createElement('span');
+                    badge.className = 'unread-badge badge bg-danger rounded-pill float-end';
+                    item.appendChild(badge);
+                }
+                badge.textContent = count;
+            } else {
+                if (badge) badge.remove();
+            }
+        }
+
+        function markAsSeen(recipientId) {
+            fetch('/api/messages/' + recipientId + '/seen', {
+                method: 'POST',
+                headers: {
+                    [document.querySelector('meta[name="_csrf_header"]').content]:
+                        document.querySelector('meta[name="_csrf"]').content
+                }
+            }).catch(() => { });
+            unreadCounts.set(recipientId, 0);
+            setUnreadBadge(recipientId, 0);
+        }
+
+
         function connect() {
             const socket = new SockJS('/ws');
             stompClient = Stomp.over(socket);
@@ -931,9 +997,28 @@
                     addUserToSidebar(JSON.parse(msg.body));
                 });
 
-                // Subscribe to incoming friend requests for this userId.
                 friendRequestsSubscription = stompClient.subscribe('/topic/friend-requests.' + currentUserId, (msg) => {
                     handleIncomingFriendRequest(JSON.parse(msg.body));
+                });
+
+                // Personal topic — receives all messages sent TO this user
+                // regardless of which conversation is currently open
+                stompClient.subscribe('/topic/user.' + currentUserId, (msg) => {
+                    const message = JSON.parse(msg.body);
+                    const senderId = message.senderId;
+
+                    // If this conversation is already open, the conversation subscription
+                    // already handled displaying it — just mark as seen
+                    if (selectedUserId === senderId) {
+                        markAsSeen(senderId);
+                        return;
+                    }
+
+                    // Otherwise increment the badge and move sender to top
+                    const current = unreadCounts.get(senderId) || 0;
+                    unreadCounts.set(senderId, current + 1);
+                    setUnreadBadge(senderId, current + 1);
+                    moveUserToTop(senderId);
                 });
 
                 Promise.all([loadFriends(), loadOutgoingPendingFriendRequests(), loadIncomingPendingFriendRequests()])
@@ -951,7 +1036,11 @@
             lastRenderedSenderId = null;
             fetch('/api/messages/' + recipientId)
                 .then(res => res.json())
-                .then(messages => messages.forEach(displayMessage));
+                .then(messages => {
+                    messages.forEach(displayMessage);
+                    // Mark as seen when opening the conversation
+                    markAsSeen(recipientId);
+                });
         }
 
         function getInitials(name) {

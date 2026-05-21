@@ -29,118 +29,133 @@ import java.util.concurrent.TimeUnit;
 @Controller
 @RequiredArgsConstructor
 public class ChatController {
-    private final ChatService chatService;
-    private final UserRepository userRepository;
-    private final MessageMediaService messageMediaService;
-    private final SimpMessagingTemplate messagingTemplate;
-    private final FriendRequestService friendRequestService;
+        private final ChatService chatService;
+        private final UserRepository userRepository;
+        private final MessageMediaService messageMediaService;
+        private final SimpMessagingTemplate messagingTemplate;
+        private final FriendRequestService friendRequestService;
 
-    @GetMapping("/chat")
-    public String chatPage(Authentication authentication, Model model) {
-        String email = authentication.getName();
-        User currentUser = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        @GetMapping("/chat")
+        public String chatPage(Authentication authentication, Model model) {
+                String email = authentication.getName();
+                User currentUser = userRepository.findByEmail(email)
+                                .orElseThrow(() -> new RuntimeException("User not found"));
 
-        model.addAttribute("currentUser", currentUser);
+                model.addAttribute("currentUser", currentUser);
 
-        List<User> friends = friendRequestService.getFriendsWithDetails(currentUser.getUserId());
+                List<User> friends = friendRequestService.getFriendsWithDetails(currentUser.getUserId());
 
-        model.addAttribute("users", friends);
-        return "chat";
-    }
-
-    @GetMapping("/api/users/search")
-    public ResponseEntity<List<User>> searchUsers(@RequestParam String username, Authentication authentication) {
-        String email = authentication.getName();
-        User currentUser = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
-        List<User> matchedUsers = userRepository.findAll().stream()
-                .filter(u -> !u.getUserId().equals(currentUser.getUserId()))
-                .filter(u -> u.getUsername() != null && u.getUsername().toLowerCase().contains(username.toLowerCase()))
-                .toList();
-        return ResponseEntity.ok(matchedUsers);
-    }
-
-    @GetMapping("/api/friends")
-    public ResponseEntity<List<User>> getFriends(Authentication authentication) {
-        String email = authentication.getName();
-        User currentUser = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
-        List<User> friends = friendRequestService.getFriendsWithDetails(currentUser.getUserId());
-        return ResponseEntity.ok(friends);
-    }
-
-    @GetMapping("/api/messages/{recipientId}")
-    public ResponseEntity<List<Message>> getMessages(
-            @PathVariable String recipientId,
-            Authentication authentication) {
-
-        String email = authentication.getName();
-        User currentUser = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
-        List<Message> messages = chatService.getConversation(
-                currentUser.getUserId(), recipientId);
-
-        return ResponseEntity.ok(messages);
-    }
-
-    @PostMapping("/api/messages/image")
-    public ResponseEntity<?> sendImageMessage(Authentication authentication,
-                                                    @RequestParam String recipientId,
-                                                    @RequestParam MultipartFile file) {
-        String email = authentication.getName();
-        User currentUser = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
-        User recipient = userRepository.findById(recipientId)
-                .orElseThrow(() -> new RuntimeException("Recipient not found"));
-
-        try {
-            String conversationId = buildConversationId(currentUser.getUserId(), recipient.getUserId());
-            MessageMediaService.MediaUploadResult uploadResult = messageMediaService.uploadImage(conversationId, file);
-
-            Message message = chatService.sendImageMessage(
-                    currentUser.getUserId(),
-                    recipient.getUserId(),
-                    currentUser.getUsername(),
-                    uploadResult.mediaKey(),
-                    uploadResult.mediaUrl(),
-                    uploadResult.contentType()
-            );
-
-            messagingTemplate.convertAndSend("/topic/conversation." + conversationId, message);
-            return ResponseEntity.ok(message);
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+                model.addAttribute("users", friends);
+                return "chat";
         }
-    }
 
-    @GetMapping("/api/messages/media")
-    public ResponseEntity<ByteArrayResource> messageMedia(@RequestParam String key) {
-        try {
-            byte[] mediaBytes = messageMediaService.downloadMedia(key);
-            String contentType = messageMediaService.getContentType(key);
+        @GetMapping("/api/users/search")
+        public ResponseEntity<List<User>> searchUsers(@RequestParam String username, Authentication authentication) {
+                String email = authentication.getName();
+                User currentUser = userRepository.findByEmail(email)
+                                .orElseThrow(() -> new RuntimeException("User not found"));
 
-            MediaType mediaType = contentType != null
-                    ? MediaType.parseMediaType(contentType)
-                    : MediaType.APPLICATION_OCTET_STREAM;
-
-            return ResponseEntity.ok()
-                    .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic())
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
-                    .contentType(mediaType)
-                    .body(new ByteArrayResource(mediaBytes));
-        } catch (Exception e) {
-            return ResponseEntity.notFound().build();
+                List<User> matchedUsers = userRepository.findAll().stream()
+                                .filter(u -> !u.getUserId().equals(currentUser.getUserId()))
+                                .filter(u -> u.getUsername() != null
+                                                && u.getUsername().toLowerCase().contains(username.toLowerCase()))
+                                .toList();
+                return ResponseEntity.ok(matchedUsers);
         }
-    }
 
-    private String buildConversationId(String userId1, String userId2) {
-        return userId1.compareTo(userId2) < 0
-                ? userId1 + "#" + userId2
-                : userId2 + "#" + userId1;
-    }
+        @GetMapping("/api/friends")
+        public ResponseEntity<List<User>> getFriends(Authentication authentication) {
+                String email = authentication.getName();
+                User currentUser = userRepository.findByEmail(email)
+                                .orElseThrow(() -> new RuntimeException("User not found"));
+
+                List<User> friends = friendRequestService.getFriendsWithDetails(currentUser.getUserId());
+                return ResponseEntity.ok(friends);
+        }
+
+        @GetMapping("/api/messages/{recipientId}")
+        public ResponseEntity<List<Message>> getMessages(
+                        @PathVariable String recipientId,
+                        Authentication authentication) {
+
+                String email = authentication.getName();
+                User currentUser = userRepository.findByEmail(email)
+                                .orElseThrow(() -> new RuntimeException("User not found"));
+
+                List<Message> messages = chatService.getConversation(
+                                currentUser.getUserId(), recipientId);
+
+                return ResponseEntity.ok(messages);
+        }
+
+        @PostMapping("/api/messages/{recipientId}/seen")
+        public ResponseEntity<Void> markAsSeen(
+                        @PathVariable String recipientId,
+                        Authentication authentication) {
+
+                String email = authentication.getName();
+                User currentUser = userRepository.findByEmail(email)
+                                .orElseThrow(() -> new RuntimeException("User not found"));
+
+                chatService.markConversationAsSeen(currentUser.getUserId(), recipientId);
+                return ResponseEntity.ok().build();
+        }
+
+        @PostMapping("/api/messages/image")
+        public ResponseEntity<?> sendImageMessage(Authentication authentication,
+                        @RequestParam String recipientId,
+                        @RequestParam MultipartFile file) {
+                String email = authentication.getName();
+                User currentUser = userRepository.findByEmail(email)
+                                .orElseThrow(() -> new RuntimeException("User not found"));
+
+                User recipient = userRepository.findById(recipientId)
+                                .orElseThrow(() -> new RuntimeException("Recipient not found"));
+
+                try {
+                        String conversationId = buildConversationId(currentUser.getUserId(), recipient.getUserId());
+                        MessageMediaService.MediaUploadResult uploadResult = messageMediaService
+                                        .uploadImage(conversationId, file);
+
+                        Message message = chatService.sendImageMessage(
+                                        currentUser.getUserId(),
+                                        recipient.getUserId(),
+                                        currentUser.getUsername(),
+                                        uploadResult.mediaKey(),
+                                        uploadResult.mediaUrl(),
+                                        uploadResult.contentType());
+
+                        messagingTemplate.convertAndSend("/topic/conversation." + conversationId, message);
+                        messagingTemplate.convertAndSend("/topic/user." + recipientId, message);
+                        return ResponseEntity.ok(message);
+                } catch (RuntimeException e) {
+                        return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+                }
+        }
+
+        @GetMapping("/api/messages/media")
+        public ResponseEntity<ByteArrayResource> messageMedia(@RequestParam String key) {
+                try {
+                        byte[] mediaBytes = messageMediaService.downloadMedia(key);
+                        String contentType = messageMediaService.getContentType(key);
+
+                        MediaType mediaType = contentType != null
+                                        ? MediaType.parseMediaType(contentType)
+                                        : MediaType.APPLICATION_OCTET_STREAM;
+
+                        return ResponseEntity.ok()
+                                        .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic())
+                                        .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                                        .contentType(mediaType)
+                                        .body(new ByteArrayResource(mediaBytes));
+                } catch (Exception e) {
+                        return ResponseEntity.notFound().build();
+                }
+        }
+
+        private String buildConversationId(String userId1, String userId2) {
+                return userId1.compareTo(userId2) < 0
+                                ? userId1 + "#" + userId2
+                                : userId2 + "#" + userId1;
+        }
 }
