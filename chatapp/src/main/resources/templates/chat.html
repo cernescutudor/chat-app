@@ -275,10 +275,11 @@
 
                 <!-- Pending friend requests expansive section -->
                 <div id="pendingRequestsSection" class="bg-white position-absolute w-100 d-none flex-column"
-                    style="bottom: 56px; top: 120px; z-index: 5; border-top: 1px solid #dee2e6;">
+                    style="bottom: 56px; top: 120px; z-index: 5; border-top: 1px solid #dee2e6; overflow-y: auto;">
                     <div class="p-2 border-bottom fw-bold text-muted small">Incoming Requests</div>
-                    <div id="pendingRequestsListContainer"
-                        class="overflow-auto flex-grow-1 p-2 d-flex flex-column gap-2"></div>
+                    <div id="pendingRequestsListContainer" class="p-2 d-flex flex-column gap-2"></div>
+                    <div class="p-2 border-bottom border-top fw-bold text-muted small mt-1">Outgoing Requests</div>
+                    <div id="outgoingRequestsListContainer" class="p-2 d-flex flex-column gap-2"></div>
                 </div>
             </div>
 
@@ -387,7 +388,7 @@
         let friendRequestsSubscription = null;
         let lastRenderedSenderId = null;
         let friendIds = new Set();
-        let pendingFriendRequestRecipientIds = new Set();
+        let outgoingPendingRequests = new Map(); // recipientId -> request object
         let pendingIncomingFriendRequests = new Map(); // requestId -> notification
         let currentFriendRequestStatus = null;
         const userProfilePictureById = {
@@ -493,10 +494,13 @@
             return fetch('/api/friend-requests/sent-pending')
                 .then(response => response.json())
                 .then(requests => {
-                    pendingFriendRequestRecipientIds = new Set((requests || []).map(request => request.recipientId));
+                    outgoingPendingRequests.clear();
+                    (requests || []).forEach(r => outgoingPendingRequests.set(r.recipientId, r));
+                    renderOutgoingPendingRequests();
                 })
                 .catch(() => {
-                    pendingFriendRequestRecipientIds = new Set();
+                    outgoingPendingRequests.clear();
+                    renderOutgoingPendingRequests();
                 });
         }
 
@@ -561,7 +565,7 @@
 
             selectedUserId = item.dataset.userid;
             selectedUsername = item.dataset.username;
-            currentFriendRequestStatus = pendingFriendRequestRecipientIds.has(selectedUserId) ? 'pending' : null;
+            currentFriendRequestStatus = outgoingPendingRequests.has(selectedUserId) ? 'pending' : null;
             renderSelectionState();
 
             if (friendIds.has(selectedUserId)) {
@@ -699,23 +703,31 @@
             const friendUserId = notification.senderId === currentUserId
                 ? notification.recipientId
                 : notification.senderId;
+            const friendUsername = notification.senderId === currentUserId
+                ? notification.recipientUsername
+                : notification.senderUsername;
 
-            if (!friendUserId) {
-                return;
-            }
+            if (!friendUserId) return;
 
             friendIds.add(friendUserId);
-            pendingFriendRequestRecipientIds.delete(friendUserId);
+            outgoingPendingRequests.delete(friendUserId);
             pendingIncomingFriendRequests.delete(notification.requestId);
+
+            // Add to the friends sidebar immediately
+            addUserToSidebar({
+                userId: friendUserId,
+                username: friendUsername,
+                profilePictureUrl: userProfilePictureById[friendUserId] || ''
+            });
+
+            renderPendingIncomingRequests();
+            renderOutgoingPendingRequests();
 
             if (selectedUserId === friendUserId) {
                 currentFriendRequestStatus = null;
                 renderSelectionState();
                 loadConversationForSelectedUser();
-                return;
             }
-
-            renderPendingIncomingRequests();
         }
 
         function renderPendingIncomingRequests() {
@@ -791,6 +803,39 @@
                     document.getElementById('friendRequestsToggleIcon').textContent = '▼';
                 });
 
+                list.appendChild(item);
+            }
+        }
+
+        function renderOutgoingPendingRequests() {
+            const list = document.getElementById('outgoingRequestsListContainer');
+            if (!list) return;
+
+            if (outgoingPendingRequests.size === 0) {
+                list.innerHTML = '<div class="text-muted small text-center p-2">No outgoing requests</div>';
+                return;
+            }
+
+            list.innerHTML = '';
+
+            for (const [recipientId, request] of outgoingPendingRequests) {
+                const item = document.createElement('div');
+                item.className = 'friend-request-item';
+                item.style.background = '#e8f4fd';
+                item.style.borderColor = '#0d6efd';
+
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'friend-request-item-name';
+                nameDiv.textContent = request.recipientUsername || recipientId;
+
+                const statusDiv = document.createElement('div');
+                statusDiv.className = 'small text-muted';
+                statusDiv.textContent = request.message?.trim()
+                    ? 'Message: ' + request.message.substring(0, 40) + (request.message.length > 40 ? '...' : '')
+                    : 'Waiting for response...';
+
+                item.appendChild(nameDiv);
+                item.appendChild(statusDiv);
                 list.appendChild(item);
             }
         }
@@ -1094,14 +1139,16 @@
 
                     if (payload.status === 'ACCEPTED') {
                         friendIds.add(selectedUserId);
-                        pendingFriendRequestRecipientIds.delete(selectedUserId);
+                        outgoingPendingRequests.delete(selectedUserId);
+                        renderOutgoingPendingRequests();
                         currentFriendRequestStatus = null;
                         renderSelectionState();
                         loadConversationForSelectedUser();
                         return;
                     }
 
-                    pendingFriendRequestRecipientIds.add(selectedUserId);
+                    outgoingPendingRequests.set(selectedUserId, payload);
+                    renderOutgoingPendingRequests();
                     currentFriendRequestStatus = 'pending';
                     friendRequestStatus.textContent = 'Friend request sent';
                     renderSelectionState();
