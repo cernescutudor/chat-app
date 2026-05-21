@@ -25,6 +25,7 @@ public class Message {
     private String mediaKey;         // S3 object key for media messages
     private String mediaUrl;         // App URL used to render media messages
     private String mediaContentType; // MIME type for media messages
+    private boolean seen;
 
     @DynamoDbPartitionKey
     public String getConversationId() {

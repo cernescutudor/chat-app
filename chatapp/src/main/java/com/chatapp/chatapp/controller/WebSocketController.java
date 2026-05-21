@@ -50,6 +50,9 @@ public class WebSocketController {
 
             // Broadcast to everyone subscribed to this conversation topic
             messagingTemplate.convertAndSend("/topic/conversation." + conversationId, message);
+
+            messagingTemplate.convertAndSend("/topic/user." + recipientId, message);
+
         } catch (RuntimeException e) {
             // Send error message back to the sender
             Map<String, Object> errorMessage = new HashMap<>();

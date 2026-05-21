@@ -24,15 +24,18 @@ public class FriendRequestController {
     @PostMapping("/send/{recipientId}")
     public ResponseEntity<?> sendFriendRequest(
             @PathVariable String recipientId,
+            @RequestBody(required = false) Map<String, String> payload,
             Authentication authentication) {
         
         String email = authentication.getName();
         User currentUser = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+        
+        String message = (payload != null && payload.containsKey("message")) ? payload.get("message") : null;
 
         try {
             FriendRequest request = friendRequestService.sendFriendRequest(
-                    currentUser.getUserId(), recipientId);
+                    currentUser.getUserId(), recipientId, message);
             
             webSocketController.notifyFriendRequest(request, recipientId);
             

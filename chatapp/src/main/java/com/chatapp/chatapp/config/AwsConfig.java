@@ -6,6 +6,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials; // only for local dev with static creds, not used in deployment
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider; // only for local dev with static creds, not used in deployment
+
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.regions.Region;
@@ -24,10 +27,27 @@ public class AwsConfig {
     @Value("${aws.s3.endpoint:}")
     private String s3Endpoint;
 
-    // IAM Role (EC2 instance profile)
-    private DefaultCredentialsProvider credentialsProvider() {
-        return DefaultCredentialsProvider.create();
+    // vvvv comment out when deploying
+    @Value("${aws.access-key-id}")
+    private String accessKeyId;
+
+    @Value("${aws.secret-access-key}")
+    private String secretAccessKey;
+    // ^^^^ comment out when deploying
+
+
+    private StaticCredentialsProvider credentialsProvider() {
+        return StaticCredentialsProvider.create(
+            AwsBasicCredentials.create(accessKeyId, secretAccessKey)
+        );
     }
+
+
+    // IAM Role (EC2 instance profile) uncomment for deployment vvvv
+
+    // private DefaultCredentialsProvider credentialsProvider() {
+    //     return DefaultCredentialsProvider.create();
+    // }
 
     @Bean
     public DynamoDbClient dynamoDbClient() {

@@ -1,8 +1,10 @@
 package com.chatapp.chatapp.service;
 
 import com.chatapp.chatapp.model.FriendRequest;
+import com.chatapp.chatapp.model.Message;
 import com.chatapp.chatapp.model.User;
 import com.chatapp.chatapp.repository.FriendRequestRepository;
+import com.chatapp.chatapp.repository.MessageRepository;
 import com.chatapp.chatapp.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -19,8 +21,9 @@ public class FriendRequestService {
 
     private final FriendRequestRepository friendRequestRepository;
     private final UserRepository userRepository;
+    private final MessageRepository messageRepository;
 
-    public FriendRequest sendFriendRequest(String senderId, String recipientId) {
+    public FriendRequest sendFriendRequest(String senderId, String recipientId, String message) {
         // Validate that both users exist
         User sender = userRepository.findById(senderId)
                 .orElseThrow(() -> new RuntimeException("Sender user not found"));
@@ -53,6 +56,7 @@ public class FriendRequestService {
                 .recipientId(recipientId)
                 .recipientUsername(recipient.getUsername())
                 .status("PENDING")
+                .message(message)
                 .timestamp(Instant.now().toString())
                 .build();
 
@@ -74,7 +78,29 @@ public class FriendRequestService {
 
         request.setStatus("ACCEPTED");
         friendRequestRepository.save(request);
+        
+        // Save the request message as the first chat message if it exists
+        if (request.getMessage() != null && !request.getMessage().trim().isEmpty()) {
+            String conversationId = buildConversationId(request.getSenderId(), request.getRecipientId());
+            Message chatMessage = Message.builder()
+                    .conversationId(conversationId)
+                    .timestamp(request.getTimestamp() != null ? request.getTimestamp() : Instant.now().toString())
+                    .senderId(request.getSenderId())
+                    .senderUsername(request.getSenderUsername())
+                    .recipientId(request.getRecipientId())
+                    .content(request.getMessage())
+                    .messageType("TEXT")
+                    .build();
+            messageRepository.save(chatMessage);
+        }
+        
         return request;
+    }
+
+    private String buildConversationId(String userId1, String userId2) {
+        return userId1.compareTo(userId2) < 0
+                ? userId1 + "_" + userId2
+                : userId2 + "_" + userId1;
     }
 
     public FriendRequest rejectFriendRequest(String requestId, String currentUserId) {
