@@ -100,6 +100,11 @@ public class FriendRequestController {
 
         try {
             FriendRequest request = friendRequestService.rejectFriendRequest(requestId, currentUser.getUserId());
+
+            User sender = userRepository.findById(request.getSenderId())
+                    .orElseThrow(() -> new RuntimeException("Sender not found"));
+            webSocketController.notifyFriendRequest(request, sender.getUserId());
+
             return ResponseEntity.ok(request);
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

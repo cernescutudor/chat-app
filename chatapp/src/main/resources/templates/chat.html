@@ -1,239 +1,26 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org" data-bs-theme="dark">
 
 <head>
     <meta charset="UTF-8">
     <meta name="_csrf" th:content="${_csrf.token}" />
     <meta name="_csrf_header" th:content="${_csrf.headerName}" />
-    <title>Chat – ChatApp</title>
+    <title>Chat - ChatApp</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
-    <style>
-        body {
-            height: 100vh;
-            overflow: hidden;
-        }
-
-        #messages {
-            height: calc(100vh - 220px);
-            overflow-y: auto;
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 1rem;
-        }
-
-        .message-row {
-            display: flex;
-            align-items: flex-start;
-            gap: 0.6rem;
-            margin-bottom: 0.25rem;
-        }
-
-        .message-row.mine {
-            justify-content: flex-end;
-        }
-
-        .message-row.theirs {
-            justify-content: flex-start;
-        }
-
-        .message-row.continued.mine {
-            padding-right: 2.1rem;
-            margin-top: -0.1rem;
-        }
-
-        .message-row.continued.theirs {
-            padding-left: 2.1rem;
-            margin-top: -0.1rem;
-        }
-
-        .message-meta {
-            font-size: 0.75rem;
-            line-height: 1;
-            margin-bottom: 0.25rem;
-            opacity: 0.78;
-        }
-
-        .message-avatar {
-            width: 34px;
-            height: 34px;
-            min-width: 34px;
-            border-radius: 50%;
-            object-fit: cover;
-            background: #dbe2ea;
-            border: 2px solid rgba(255, 255, 255, 0.9);
-            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
-            margin-top: 0.2rem;
-        }
-
-        .message-avatar-placeholder {
-            width: 34px;
-            height: 34px;
-            min-width: 34px;
-            border-radius: 50%;
-            display: grid;
-            place-items: center;
-            font-size: 0.8rem;
-            font-weight: 700;
-            color: #334155;
-            background: #dbe2ea;
-            border: 2px solid rgba(255, 255, 255, 0.9);
-            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
-            margin-top: 0.2rem;
-        }
-
-        .message-avatar-spacer {
-            width: 34px;
-            min-width: 34px;
-            flex: 0 0 34px;
-            height: 34px;
-        }
-
-        .message-bubble {
-            max-width: 70%;
-            padding: 8px 14px;
-            border-radius: 18px;
-            margin-bottom: 0;
-            word-wrap: break-word;
-        }
-
-        .message-bubble.image-message {
-            padding: 8px;
-            background: transparent;
-        }
-
-        .message-image {
-            display: block;
-            max-width: 320px;
-            max-height: 320px;
-            width: 100%;
-            height: auto;
-            border-radius: 14px;
-            object-fit: cover;
-            background: #dbe2ea;
-        }
-
-        .message-mine {
-            background-color: #0d6efd;
-            color: white;
-            margin-left: auto;
-        }
-
-        .message-theirs {
-            background-color: #e2e3e5;
-            color: black;
-        }
-
-        .user-list-item {
-            cursor: pointer;
-        }
-
-        .user-list-item.active {
-            background-color: #0d6efd;
-            color: white;
-        }
-
-        .modal-message-content {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .modal-message-image {
-            max-width: 100%;
-            max-height: 70vh;
-            width: auto;
-            height: auto;
-            border-radius: 8px;
-            object-fit: contain;
-        }
-
-        .modal-message-text {
-            word-wrap: break-word;
-            white-space: pre-wrap;
-            max-height: 60vh;
-            overflow-y: auto;
-            padding: 1rem;
-            background: #f8f9fa;
-            border-radius: 8px;
-            width: 100%;
-        }
-
-        .modal-message-meta {
-            font-size: 0.875rem;
-            color: #6c757d;
-            text-align: center;
-        }
-
-        .chat-state-panel {
-            border: 1px solid #dee2e6;
-            border-radius: 12px;
-            background: #fff;
-            padding: 1rem;
-        }
-
-        .chat-state-panel .text-muted {
-            margin-bottom: 0;
-        }
-
-        .friend-request-item {
-            background: #fff3cd;
-            border: 1px solid #ffc107;
-            border-radius: 6px;
-            padding: 0.75rem;
-            font-size: 0.85rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        .friend-request-item-name {
-            font-weight: 600;
-            color: #333;
-        }
-
-        .friend-request-item-actions {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .friend-request-item-actions button {
-            flex: 1;
-            padding: 0.35rem 0.6rem;
-            font-size: 0.75rem;
-            border-radius: 4px;
-            border: none;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .friend-request-item-actions .btn-accept {
-            background: #198754;
-            color: white;
-        }
-
-        .friend-request-item-actions .btn-accept:hover {
-            background: #157347;
-        }
-
-        .friend-request-item-actions .btn-reject {
-            background: #dc3545;
-            color: white;
-        }
-
-        .friend-request-item-actions .btn-reject:hover {
-            background: #bb2d3b;
-        }
-    </style>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <link rel="stylesheet" th:href="@{/css/chat.css}">
 </head>
 
-<body>
+<body class="bg-shapes" style="background: var(--navy); color: var(--text);">
 
     <div class="container-fluid h-100">
         <div class="row h-100">
 
             <!-- Sidebar: user list -->
-            <div class="col-3 border-end p-0 d-flex flex-column h-100 position-relative">
+            <div class="col-3 border-end p-0 d-flex flex-column h-100 position-relative overflow-hidden">
                 <div class="p-3 border-bottom d-flex justify-content-between align-items-center gap-2">
                     <div class="d-flex flex-column">
                         <strong th:text="${currentUser.username}">Username</strong>
@@ -265,20 +52,20 @@
                 </div>
 
                 <!-- Friend requests row at the bottom -->
-                <div id="friendRequestsToggle" class="p-3 border-top bg-light" style="cursor: pointer; z-index: 10;">
+                <div id="friendRequestsToggle" class="p-3 border-top" style="cursor: pointer; z-index: 10; background: var(--card-bg); border-color: var(--border) !important;">
                     <div class="d-flex justify-content-between align-items-center">
-                        <span class="fw-bold text-success">Friend requests <span id="friendRequestsCount"
+                        <span class="fw-bold" style="color: var(--text);">Friend requests <span id="friendRequestsCount"
                                 class="badge bg-danger rounded-pill">0</span></span>
-                        <span id="friendRequestsToggleIcon">▼</span>
+                        <span id="friendRequestsToggleIcon" style="color: var(--text);">▼</span>
                     </div>
                 </div>
 
                 <!-- Pending friend requests expansive section -->
-                <div id="pendingRequestsSection" class="bg-white position-absolute w-100 d-none flex-column"
-                    style="bottom: 56px; top: 120px; z-index: 5; border-top: 1px solid #dee2e6; overflow-y: auto;">
-                    <div class="p-2 border-bottom fw-bold text-muted small">Incoming Requests</div>
+                <div id="pendingRequestsSection" class="position-absolute w-100 flex-column pending-requests-panel"
+                    style="bottom: 56px; top: 120px; z-index: 5; border-top: 1px solid var(--border); overflow-y: auto; background: var(--navy-mid);">
+                    <div class="p-2 border-bottom fw-bold small" style="color: var(--text-muted); border-color: var(--border) !important;">Incoming Requests</div>
                     <div id="pendingRequestsListContainer" class="p-2 d-flex flex-column gap-2"></div>
-                    <div class="p-2 border-bottom border-top fw-bold text-muted small mt-1">Outgoing Requests</div>
+                    <div class="p-2 border-bottom border-top fw-bold small mt-1" style="color: var(--text-muted); border-color: var(--border) !important;">Outgoing Requests</div>
                     <div id="outgoingRequestsListContainer" class="p-2 d-flex flex-column gap-2"></div>
                 </div>
             </div>
@@ -630,14 +417,12 @@
 
         if (friendRequestsToggle) {
             friendRequestsToggle.addEventListener('click', () => {
-                if (pendingRequestsSection.classList.contains('d-none')) {
-                    pendingRequestsSection.classList.remove('d-none');
-                    pendingRequestsSection.classList.add('d-flex');
-                    friendRequestsToggleIcon.textContent = '▲';
-                } else {
-                    pendingRequestsSection.classList.add('d-none');
-                    pendingRequestsSection.classList.remove('d-flex');
+                if (pendingRequestsSection.classList.contains('show-panel')) {
+                    pendingRequestsSection.classList.remove('show-panel');
                     friendRequestsToggleIcon.textContent = '▼';
+                } else {
+                    pendingRequestsSection.classList.add('show-panel');
+                    friendRequestsToggleIcon.textContent = '▲';
                 }
             });
         }
@@ -718,6 +503,20 @@
 
             if (notification.status === 'ACCEPTED') {
                 handleAcceptedFriendRequest(notification);
+                return;
+            }
+
+            if (notification.status === 'REJECTED') {
+                outgoingPendingRequests.delete(notification.recipientId);
+                renderOutgoingPendingRequests();
+                
+                if (selectedUserId === notification.recipientId) {
+                    currentFriendRequestStatus = null;
+                    friendRequestStatus.textContent = '';
+                    addFriendBtn.disabled = false;
+                    addFriendBtn.textContent = 'Add friend';
+                    renderSelectionState();
+                }
                 return;
             }
 
@@ -826,8 +625,7 @@
                     }
 
                     // Close the requests panel
-                    document.getElementById('pendingRequestsSection').classList.add('d-none');
-                    document.getElementById('pendingRequestsSection').classList.remove('d-flex');
+                    document.getElementById('pendingRequestsSection').classList.remove('show-panel');
                     document.getElementById('friendRequestsToggleIcon').textContent = '▼';
                 });
 
@@ -849,8 +647,8 @@
             for (const [recipientId, request] of outgoingPendingRequests) {
                 const item = document.createElement('div');
                 item.className = 'friend-request-item';
-                item.style.background = '#e8f4fd';
-                item.style.borderColor = '#0d6efd';
+                item.style.background = 'rgba(99,102,241,0.15)';
+                item.style.borderColor = 'rgba(99,102,241,0.3)';
 
                 const nameDiv = document.createElement('div');
                 nameDiv.className = 'friend-request-item-name';
